@@ -157,8 +157,8 @@ func makeFloat64(v float64) (encoder, error) {
         if math.Signbit(v) {
             return byteEncoder(0x43), nil
         }
-        // TODO should be byte{}
-        return byteEncoder(0), nil
+        // X.690 §8.5.2: positive zero REAL has zero-length content.
+        return bytesEncoder(nil), nil
     default:
         // we take the easy part ;-)
         value := []byte(strconv.FormatFloat(v, 'G', -1, 64))
@@ -622,6 +622,21 @@ func makeField(v reflect.Value, params fieldParameters) (e encoder, err error) {
 	// If the field is an interface{} then recurse into it.
 	if v.Kind() == reflect.Interface && v.Type().NumMethod() == 0 {
 		return makeField(v.Elem(), params)
+	}
+
+	// Dereference pointer types
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			// Nil pointer with optional tag means omit the field
+			return bytesEncoder(nil), nil
+		}
+		// A non-nil pointer means the field is explicitly present.
+		// Strip the "optional" flag so the recursive call does not apply
+		// the zero-value-omission rule to a value the caller has chosen
+		// to set (e.g. *int64 pointing at 0 must still be encoded).
+		innerParams := params
+		innerParams.optional = false
+		return makeField(v.Elem(), innerParams)
 	}
 
 	if v.Kind() == reflect.Slice && v.Len() == 0 && params.omitEmpty {

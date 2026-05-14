@@ -802,6 +802,43 @@ func parseField(v reflect.Value, bytes []byte, initOffset int, params fieldParam
 	offset = initOffset
 	fieldType := v.Type()
 
+	// Handle pointer types: allocate the pointer and parse into the element
+	if fieldType.Kind() == reflect.Ptr {
+		// If we have run out of data, it may be that there are optional elements at the end.
+		if offset == len(bytes) {
+			if !setDefaultValue(v, params) {
+				err = SyntaxError{"sequence truncated"}
+			}
+			return
+		}
+
+		// Peek at the tag to check if it matches (for optional fields)
+		if params.tag != nil && !params.explicit {
+			t, _, err2 := parseTagAndLength(bytes, offset)
+			if err2 != nil {
+				err = err2
+				return
+			}
+			expectedClass := ClassContextSpecific
+			if params.application {
+				expectedClass = ClassApplication
+			}
+			if params.private {
+				expectedClass = ClassPrivate
+			}
+			if t.class != expectedClass || t.tag != *params.tag {
+				// Tags don't match - this is an optional element that's not present
+				offset = initOffset
+				return
+			}
+		}
+
+		// Allocate the pointer
+		v.Set(reflect.New(fieldType.Elem()))
+		// Parse into the pointed-to value
+		return parseField(v.Elem(), bytes, initOffset, params)
+	}
+
 	// If we have run out of data, it may be that there are optional elements at the end.
 	if offset == len(bytes) {
 		if !setDefaultValue(v, params) {

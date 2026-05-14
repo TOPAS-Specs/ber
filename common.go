@@ -183,6 +183,8 @@ func getUniversalType(t reflect.Type) (matchAny bool, tagNumber int, isCompound,
 		return false, TagSequence, true, true
 	case reflect.String:
 		return false, TagPrintableString, false, true
+	case reflect.Ptr:
+		return getUniversalType(t.Elem())
 	}
 	return false, 0, false, false
 }
